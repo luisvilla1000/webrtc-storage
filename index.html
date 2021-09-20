@@ -1,0 +1,102 @@
+<html>
+<style>
+    html,
+    body {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+</style>
+
+<title>ondataavailable | get Intervals based blobs using RecordRTC | RecordRTC</title>
+<h1>ondataavailable | get Intervals based blobs using RecordRTC</h1>
+
+<br>
+
+<button id="btn-start-recording">Start Recording</button>
+<button id="btn-stop-recording" disabled>Stop Recording</button>
+
+<hr>
+<video controls autoplay playsinline></video>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/RecordRTC/5.6.2/RecordRTC.min.js"
+    integrity="sha512-IMLquIKoKQeQ+kYuec3BvLYjy3yF2nH/ojHPkXQnQTeGKRliZcVed19I6E0t+WBt+9uPuEba0t2iyZAVP8mdlw=="
+    crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+    var video = document.querySelector('video');
+
+    function captureCamera(callback) {
+        navigator.mediaDevices.getUserMedia({ audio: true, video: true }).then(function (camera) {
+            callback(camera);
+        }).catch(function (error) {
+            alert('Unable to capture your camera. Please check console logs.');
+            console.error(error);
+        });
+    }
+
+    function stopRecordingCallback() {
+        video.src = video.srcObject = null;
+        var blob = new File(blobs, 'video.webm', {
+            type: 'video/webm'
+        });
+        video.src = URL.createObjectURL(blob);
+        recorder.camera.stop();
+        recorder = null;
+    }
+
+    var recorder; // globally accessible
+
+    var h1 = document.querySelector('h1');
+    var blobs = [];
+
+    document.getElementById('btn-start-recording').onclick = function () {
+        this.disabled = true;
+        captureCamera(function (camera) {
+            video.srcObject = camera;
+
+            recorder = RecordRTC(camera, {
+                recorderType: MediaStreamRecorder,
+                mimeType: 'video/webm',
+                timeSlice: 1000, // pass this parameter
+                // getNativeBlob: true,
+                ondataavailable: function (blob) {
+
+                    blobs.push(blob);
+
+                    fetch('/video-chunk', { method: "POST", body: blob, headers: { 'Content-Type': 'application/octet-stream' } })
+                        .then(response => {
+                            if (response.ok) return response;
+                            else throw Error(`Server returned ${response.status}: ${response.statusText}`)
+                        })
+                        .then(response => console.log(response.text()))
+                        .catch(err => {
+                            //alert(err);
+                        });
+
+
+                    var size = 0;
+                    blobs.forEach(function (b) {
+                        size += b.size;
+                    });
+
+                    h1.innerHTML = 'Total blobs: ' + blobs.length + ' (Total size: ' + bytesToSize(size) + ')';
+                }
+            });
+
+            recorder.startRecording();
+
+            // release camera on stopRecording
+            recorder.camera = camera;
+
+            document.getElementById('btn-stop-recording').disabled = false;
+        });
+    };
+
+    document.getElementById('btn-stop-recording').onclick = function () {
+        this.disabled = true;
+        recorder.stopRecording(stopRecordingCallback);
+    };
+</script>
+
+<footer style="margin-top: 20px;"><small id="send-message"></small></footer>
+<script src="https://www.webrtc-experiment.com/common.js"></script>
+</html>
